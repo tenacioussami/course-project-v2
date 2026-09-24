@@ -1,6 +1,15 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+
+const ALLOWED_EMAILS = [
+  '2310717@iub.edu.bd',   
+  '2331493@iub.edu.bd',
+  '221132@iub.edu.bd',
+  '2331270@iub.edu.bd',
+  '2331694@iub.edu.bd',
+];
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
@@ -28,6 +37,13 @@ const register = async (req, res, next) => {
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
+
+    if (!ALLOWED_EMAILS.includes(email.toLowerCase())) {
+      return res.status(403).json({
+        message: 'This email is not authorized to register for this project.',
+      });
+    }
+
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(400).json({ message: 'Email already registered' });
