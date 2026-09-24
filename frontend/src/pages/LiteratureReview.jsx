@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import api from '../services/api';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
@@ -7,7 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import FileUpload from '../components/FileUpload';
 import { useAuth } from '../context/AuthContext';
 
-const emptyForm = { paperTitle: '', authors: '', publicationYear: '', journal: '', doi: '', abstract: '', keyFindings: '', researchGap: '', referenceLink: '' };
+const emptyForm = { paperTitle: '', authors: '', publicationYear: '', journal: '', doi: '', abstract: '', content: '', keyFindings: '', researchGap: '', referenceLink: '' };
 
 const LiteratureReview = () => {
   const { isAdmin, user } = useAuth();
@@ -22,7 +24,7 @@ const LiteratureReview = () => {
   const [deleteId, setDeleteId] = useState(null);
 
   const [activeAuthorId, setActiveAuthorId] = useState(null);
-  const [viewItem, setViewItem] = useState(null); // for the "view text" modal when no PDF exists
+  const [expandedId, setExpandedId] = useState(null); // which paper's details are shown inline
 
   const load = async () => {
     setLoading(true);
@@ -51,6 +53,39 @@ const LiteratureReview = () => {
 
   const handleDelete = async () => { await api.delete(`/literature/${deleteId}`); setDeleteId(null); load(); };
 
+  // Custom image handler for the Quill toolbar — uploads to Cloudinary via our backend
+  const imageHandler = function () {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+    input.onchange = async () => {
+      const selected = input.files[0];
+      if (!selected) return;
+      const fd = new FormData();
+      fd.append('image', selected);
+      const res = await api.post('/upload/image', fd);
+      const url = res.data.url;
+      const quill = this.quill;
+      const range = quill.getSelection(true);
+      quill.insertEmbed(range.index, 'image', url);
+      quill.setSelection(range.index + 1);
+    };
+  };
+
+  const quillModules = {
+    toolbar: {
+      container: [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        ['clean'],
+      ],
+      handlers: { image: imageHandler },
+    },
+  };
+
   // Group papers by the member who uploaded them (createdBy)
   const authors = [];
   const grouped = {};
@@ -67,13 +102,7 @@ const LiteratureReview = () => {
   const currentAuthorId = activeAuthorId && grouped[activeAuthorId] ? activeAuthorId : authors[0];
   const currentPapers = currentAuthorId ? grouped[currentAuthorId].papers : [];
 
-  const handleTitleClick = (lit) => {
-    if (lit.pdfUrl) {
-      window.open(lit.pdfUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      setViewItem(lit);
-    }
-  };
+  const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id));
 
   if (loading) return <Loading />;
 
@@ -105,8 +134,8 @@ const LiteratureReview = () => {
             return (
               <button
                 key={id}
-                onClick={() => setActiveAuthorId(id)}
-                className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
+                onClick={() => { setActiveAuthorId(id); setExpandedId(null); }}
+                className={`rounded-lg px-4 py-3 text-base font-semibold transition ${
                   active ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                 }`}
               >
@@ -117,79 +146,100 @@ const LiteratureReview = () => {
         </div>
       )}
 
-      {/* Titles for the selected member */}
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <div className="space-y-3">
-          {currentPapers.map((lit) => (
-            <div key={lit._id} className="flex items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
-              <button
-                onClick={() => handleTitleClick(lit)}
-                className="flex items-center gap-2 text-left text-brand-600 hover:underline"
-              >
-                {lit.pdfUrl && <FileText size={14} />}
-                {lit.paperTitle}
-              </button>
-              <div className="flex shrink-0 gap-2">
-                {user && <button onClick={() => openEdit(lit)} className="text-gray-400 hover:text-brand-600"><Pencil size={16} /></button>}
-                {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
+      {/* Titles + inline expandable details for the selected member */}
+      <div className="space-y-3">
+        {currentPapers.map((lit) => {
+          const isOpen = expandedId === lit._id;
+          return (
+            <div key={lit._id} className="overflow-hidden rounded-xl border bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 p-5">
+                <button
+                  onClick={() => toggleExpand(lit._id)}
+                  className="flex flex-1 items-center gap-2 text-left text-lg font-semibold text-brand-700 hover:underline"
+                >
+                  {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  {lit.paperTitle}
+                </button>
+                <div className="flex shrink-0 gap-2">
+                  {lit.pdfUrl && (
+                    <a href={lit.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-brand-600 hover:underline">
+                      <FileText size={14} /> PDF
+                    </a>
+                  )}
+                  {user && <button onClick={() => openEdit(lit)} className="text-gray-400 hover:text-brand-600"><Pencil size={16} /></button>}
+                  {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
+                </div>
               </div>
-            </div>
-          ))}
-          {currentPapers.length === 0 && <p className="text-sm text-gray-400">No literature added yet.</p>}
-        </div>
-      </div>
 
-      {/* View modal for papers without an uploaded PDF */}
-      <Modal open={!!viewItem} title={viewItem?.paperTitle} onClose={() => setViewItem(null)} wide>
-        {viewItem && (
-          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1 text-sm">
-            <p className="text-gray-500">{viewItem.authors} · {viewItem.publicationYear} · {viewItem.journal}</p>
-            {viewItem.abstract && (
-              <div>
-                <h4 className="font-semibold text-gray-800">Abstract</h4>
-                <p className="text-gray-600">{viewItem.abstract}</p>
-              </div>
-            )}
-            {viewItem.keyFindings && (
-              <div>
-                <h4 className="font-semibold text-gray-800">Key Findings</h4>
-                <p className="text-gray-600">{viewItem.keyFindings}</p>
-              </div>
-            )}
-            {viewItem.researchGap && (
-              <div>
-                <h4 className="font-semibold text-gray-800">Research Gap</h4>
-                <p className="text-gray-600">{viewItem.researchGap}</p>
-              </div>
-            )}
-            {viewItem.referenceLink && (
-              <a href={viewItem.referenceLink} target="_blank" rel="noreferrer" className="text-brand-600">
-                Reference Link
-              </a>
-            )}
-            {!viewItem.abstract && !viewItem.keyFindings && !viewItem.researchGap && !viewItem.referenceLink && (
-              <p className="text-gray-400">No additional text or file was uploaded for this paper.</p>
-            )}
-          </div>
-        )}
-      </Modal>
+              {isOpen && (
+                <div className="border-t bg-gray-50 px-6 py-5">
+                  <p className="mb-3 text-base text-gray-600">
+                    {lit.authors} · {lit.publicationYear} · {lit.journal}
+                  </p>
+
+                  {lit.content ? (
+                    <div
+                      className="prose prose-base max-w-none text-gray-800 prose-img:rounded-lg prose-img:shadow"
+                      dangerouslySetInnerHTML={{ __html: lit.content }}
+                    />
+                  ) : (
+                    <div className="space-y-3 text-base leading-relaxed text-gray-700">
+                      {lit.abstract && (
+                        <p><span className="font-semibold text-gray-900">Abstract: </span>{lit.abstract}</p>
+                      )}
+                      {lit.keyFindings && (
+                        <p><span className="font-semibold text-gray-900">Key Findings: </span>{lit.keyFindings}</p>
+                      )}
+                      {lit.researchGap && (
+                        <p><span className="font-semibold text-gray-900">Research Gap: </span>{lit.researchGap}</p>
+                      )}
+                      {!lit.abstract && !lit.keyFindings && !lit.researchGap && (
+                        <p className="text-gray-400">No additional text was added for this paper.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {lit.referenceLink && (
+                    <a href={lit.referenceLink} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
+                      Reference Link
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {currentPapers.length === 0 && <p className="text-sm text-gray-400">No literature added yet.</p>}
+      </div>
 
       <Modal open={modalOpen} title={editing ? 'Edit Paper' : 'Add New Paper'} onClose={() => setModalOpen(false)} wide>
         <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <input required placeholder="Paper title" value={form.paperTitle} onChange={(e) => setForm({ ...form, paperTitle: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
+          <input required placeholder="Paper title" value={form.paperTitle} onChange={(e) => setForm({ ...form, paperTitle: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Authors" value={form.authors} onChange={(e) => setForm({ ...form, authors: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-            <input placeholder="Publication Year" type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
+            <input placeholder="Authors" value={form.authors} onChange={(e) => setForm({ ...form, authors: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+            <input placeholder="Publication Year" type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Journal/Conference" value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-            <input placeholder="DOI" value={form.doi} onChange={(e) => setForm({ ...form, doi: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
+            <input placeholder="Journal/Conference" value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+            <input placeholder="DOI" value={form.doi} onChange={(e) => setForm({ ...form, doi: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
           </div>
-          <textarea placeholder="Abstract" rows={3} value={form.abstract} onChange={(e) => setForm({ ...form, abstract: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-          <textarea placeholder="Key Findings" rows={2} value={form.keyFindings} onChange={(e) => setForm({ ...form, keyFindings: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-          <textarea placeholder="Research Gap" rows={2} value={form.researchGap} onChange={(e) => setForm({ ...form, researchGap: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-          <input placeholder="Reference Link" value={form.referenceLink} onChange={(e) => setForm({ ...form, referenceLink: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-          <FileUpload label="PDF File" accept="application/pdf" onFileSelect={setFile} existingUrl={editing?.pdfUrl} />
+          <textarea placeholder="Short abstract (used if you don't write full content below)" rows={2} value={form.abstract} onChange={(e) => setForm({ ...form, abstract: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+          <textarea placeholder="Key Findings" rows={2} value={form.keyFindings} onChange={(e) => setForm({ ...form, keyFindings: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+          <textarea placeholder="Research Gap" rows={2} value={form.researchGap} onChange={(e) => setForm({ ...form, researchGap: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+          <input placeholder="Reference Link" value={form.referenceLink} onChange={(e) => setForm({ ...form, referenceLink: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Full Review (you can add pictures here)</label>
+            <ReactQuill
+              theme="snow"
+              value={form.content}
+              onChange={(val) => setForm({ ...form, content: val })}
+              modules={quillModules}
+              className="bg-white"
+            />
+          </div>
+
+          <FileUpload label="PDF File (optional)" accept="application/pdf" onFileSelect={setFile} existingUrl={editing?.pdfUrl} />
           <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">{editing ? 'Save Changes' : 'Add Paper'}</button>
         </form>
       </Modal>
