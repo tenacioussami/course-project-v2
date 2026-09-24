@@ -21,6 +21,9 @@ const LiteratureReview = () => {
   const [year, setYear] = useState('');
   const [deleteId, setDeleteId] = useState(null);
 
+  const [activeAuthorId, setActiveAuthorId] = useState(null);
+  const [viewItem, setViewItem] = useState(null); // for the "view text" modal when no PDF exists
+
   const load = async () => {
     setLoading(true);
     const params = {};
@@ -48,6 +51,30 @@ const LiteratureReview = () => {
 
   const handleDelete = async () => { await api.delete(`/literature/${deleteId}`); setDeleteId(null); load(); };
 
+  // Group papers by the member who uploaded them (createdBy)
+  const authors = [];
+  const grouped = {};
+  items.forEach((lit) => {
+    const author = lit.createdBy;
+    const id = author?._id || 'unknown';
+    if (!grouped[id]) {
+      grouped[id] = { author, papers: [] };
+      authors.push(id);
+    }
+    grouped[id].papers.push(lit);
+  });
+
+  const currentAuthorId = activeAuthorId && grouped[activeAuthorId] ? activeAuthorId : authors[0];
+  const currentPapers = currentAuthorId ? grouped[currentAuthorId].papers : [];
+
+  const handleTitleClick = (lit) => {
+    if (lit.pdfUrl) {
+      window.open(lit.pdfUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      setViewItem(lit);
+    }
+  };
+
   if (loading) return <Loading />;
 
   return (
@@ -69,30 +96,83 @@ const LiteratureReview = () => {
         <input placeholder="Filter by year" value={year} onChange={(e) => setYear(e.target.value)} className="w-32 rounded-lg border px-3 py-2 text-sm" />
       </div>
 
-      <div className="space-y-4">
-        {items.map((lit) => (
-          <div key={lit._id} className="rounded-xl border bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-semibold text-gray-800">{lit.paperTitle}</h3>
-                <p className="text-sm text-gray-500">{lit.authors} · {lit.publicationYear} · {lit.journal}</p>
-                <p className="mt-2 text-sm text-gray-600">{lit.abstract}</p>
-                {lit.keyFindings && <p className="mt-1 text-xs text-gray-500"><span className="font-semibold">Key findings:</span> {lit.keyFindings}</p>}
-                {lit.researchGap && <p className="mt-1 text-xs text-gray-500"><span className="font-semibold">Research gap:</span> {lit.researchGap}</p>}
-                <div className="mt-2 flex gap-3 text-xs">
-                  {lit.pdfUrl && <a href={lit.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-brand-600"><FileText size={12}/>View PDF</a>}
-                  {lit.referenceLink && <a href={lit.referenceLink} target="_blank" rel="noreferrer" className="text-brand-600">Reference Link</a>}
-                </div>
-              </div>
+      {/* Member tabs */}
+      {authors.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {authors.map((id) => {
+            const { author } = grouped[id];
+            const active = id === currentAuthorId;
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveAuthorId(id)}
+                className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
+                  active ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                }`}
+              >
+                {author?.name || 'Unknown'}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Titles for the selected member */}
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="space-y-3">
+          {currentPapers.map((lit) => (
+            <div key={lit._id} className="flex items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
+              <button
+                onClick={() => handleTitleClick(lit)}
+                className="flex items-center gap-2 text-left text-brand-600 hover:underline"
+              >
+                {lit.pdfUrl && <FileText size={14} />}
+                {lit.paperTitle}
+              </button>
               <div className="flex shrink-0 gap-2">
                 {user && <button onClick={() => openEdit(lit)} className="text-gray-400 hover:text-brand-600"><Pencil size={16} /></button>}
                 {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
               </div>
             </div>
-          </div>
-        ))}
-        {items.length === 0 && <p className="text-sm text-gray-400">No literature added yet.</p>}
+          ))}
+          {currentPapers.length === 0 && <p className="text-sm text-gray-400">No literature added yet.</p>}
+        </div>
       </div>
+
+      {/* View modal for papers without an uploaded PDF */}
+      <Modal open={!!viewItem} title={viewItem?.paperTitle} onClose={() => setViewItem(null)} wide>
+        {viewItem && (
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1 text-sm">
+            <p className="text-gray-500">{viewItem.authors} · {viewItem.publicationYear} · {viewItem.journal}</p>
+            {viewItem.abstract && (
+              <div>
+                <h4 className="font-semibold text-gray-800">Abstract</h4>
+                <p className="text-gray-600">{viewItem.abstract}</p>
+              </div>
+            )}
+            {viewItem.keyFindings && (
+              <div>
+                <h4 className="font-semibold text-gray-800">Key Findings</h4>
+                <p className="text-gray-600">{viewItem.keyFindings}</p>
+              </div>
+            )}
+            {viewItem.researchGap && (
+              <div>
+                <h4 className="font-semibold text-gray-800">Research Gap</h4>
+                <p className="text-gray-600">{viewItem.researchGap}</p>
+              </div>
+            )}
+            {viewItem.referenceLink && (
+              <a href={viewItem.referenceLink} target="_blank" rel="noreferrer" className="text-brand-600">
+                Reference Link
+              </a>
+            )}
+            {!viewItem.abstract && !viewItem.keyFindings && !viewItem.researchGap && !viewItem.referenceLink && (
+              <p className="text-gray-400">No additional text or file was uploaded for this paper.</p>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal open={modalOpen} title={editing ? 'Edit Paper' : 'Add New Paper'} onClose={() => setModalOpen(false)} wide>
         <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
