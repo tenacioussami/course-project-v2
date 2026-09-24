@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import api from '../services/api';
 import Loading from '../components/Loading';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import FileUpload from '../components/FileUpload';
 import { useAuth } from '../context/AuthContext';
 
-const emptyForm = { paperTitle: '', authors: '', publicationYear: '', journal: '', doi: '', abstract: '', content: '', keyFindings: '', researchGap: '', referenceLink: '' };
+const emptyForm = { paperTitle: '', journal: '', publicationYear: '', content: '' };
 
 const LiteratureReview = () => {
   const { isAdmin, user } = useAuth();
@@ -18,13 +17,12 @@ const LiteratureReview = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [file, setFile] = useState(null);
   const [search, setSearch] = useState('');
   const [year, setYear] = useState('');
   const [deleteId, setDeleteId] = useState(null);
 
   const [activeAuthorId, setActiveAuthorId] = useState(null);
-  const [expandedId, setExpandedId] = useState(null); // which paper's details are shown inline
+  const [expandedId, setExpandedId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -37,23 +35,25 @@ const LiteratureReview = () => {
   };
   useEffect(() => { load(); }, [search, year]);
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm); setFile(null); setModalOpen(true); };
-  const openEdit = (item) => { setEditing(item); setForm(item); setFile(null); setModalOpen(true); };
+  const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true); };
+  const openEdit = (item) => { setEditing(item); setForm(item); setModalOpen(true); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const fd = new FormData();
-    Object.entries(form).forEach(([k, v]) => { if (v !== undefined && k !== '_id') fd.append(k, v); });
-    if (file) fd.append('pdf', file);
-    if (editing) await api.put(`/literature/${editing._id}`, fd);
-    else await api.post('/literature', fd);
+    const payload = {
+      paperTitle: form.paperTitle,
+      journal: form.journal,
+      publicationYear: form.publicationYear,
+      content: form.content,
+    };
+    if (editing) await api.put(`/literature/${editing._id}`, payload);
+    else await api.post('/literature', payload);
     setModalOpen(false);
     load();
   };
 
   const handleDelete = async () => { await api.delete(`/literature/${deleteId}`); setDeleteId(null); load(); };
 
-  // Custom image handler for the Quill toolbar — uploads to Cloudinary via our backend
   const imageHandler = function () {
     const input = document.createElement('input');
     input.setAttribute('type', 'file');
@@ -86,7 +86,6 @@ const LiteratureReview = () => {
     },
   };
 
-  // Group papers by the member who uploaded them (createdBy)
   const authors = [];
   const grouped = {};
   items.forEach((lit) => {
@@ -125,7 +124,6 @@ const LiteratureReview = () => {
         <input placeholder="Filter by year" value={year} onChange={(e) => setYear(e.target.value)} className="w-32 rounded-lg border px-3 py-2 text-sm" />
       </div>
 
-      {/* Member tabs */}
       {authors.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {authors.map((id) => {
@@ -146,7 +144,6 @@ const LiteratureReview = () => {
         </div>
       )}
 
-      {/* Titles + inline expandable details for the selected member */}
       <div className="space-y-3">
         {currentPapers.map((lit) => {
           const isOpen = expandedId === lit._id;
@@ -161,11 +158,6 @@ const LiteratureReview = () => {
                   {lit.paperTitle}
                 </button>
                 <div className="flex shrink-0 gap-2">
-                  {lit.pdfUrl && (
-                    <a href={lit.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-brand-600 hover:underline">
-                      <FileText size={14} /> PDF
-                    </a>
-                  )}
                   {user && <button onClick={() => openEdit(lit)} className="text-gray-400 hover:text-brand-600"><Pencil size={16} /></button>}
                   {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
                 </div>
@@ -174,7 +166,7 @@ const LiteratureReview = () => {
               {isOpen && (
                 <div className="border-t bg-gray-50 px-6 py-5">
                   <p className="mb-3 text-base text-gray-600">
-                    {lit.authors} · {lit.publicationYear} · {lit.journal}
+                    {lit.journal} {lit.publicationYear ? `· ${lit.publicationYear}` : ''}
                   </p>
 
                   {lit.content ? (
@@ -183,26 +175,7 @@ const LiteratureReview = () => {
                       dangerouslySetInnerHTML={{ __html: lit.content }}
                     />
                   ) : (
-                    <div className="space-y-3 text-base leading-relaxed text-gray-700">
-                      {lit.abstract && (
-                        <p><span className="font-semibold text-gray-900">Abstract: </span>{lit.abstract}</p>
-                      )}
-                      {lit.keyFindings && (
-                        <p><span className="font-semibold text-gray-900">Key Findings: </span>{lit.keyFindings}</p>
-                      )}
-                      {lit.researchGap && (
-                        <p><span className="font-semibold text-gray-900">Research Gap: </span>{lit.researchGap}</p>
-                      )}
-                      {!lit.abstract && !lit.keyFindings && !lit.researchGap && (
-                        <p className="text-gray-400">No additional text was added for this paper.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {lit.referenceLink && (
-                    <a href={lit.referenceLink} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm text-brand-600 hover:underline">
-                      Reference Link
-                    </a>
+                    <p className="text-gray-400">No review text was added for this paper.</p>
                   )}
                 </div>
               )}
@@ -216,17 +189,9 @@ const LiteratureReview = () => {
         <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <input required placeholder="Paper title" value={form.paperTitle} onChange={(e) => setForm({ ...form, paperTitle: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Authors" value={form.authors} onChange={(e) => setForm({ ...form, authors: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-            <input placeholder="Publication Year" type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+            <input placeholder="Journal/Conference name" value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+            <input placeholder="Year" type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Journal/Conference" value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-            <input placeholder="DOI" value={form.doi} onChange={(e) => setForm({ ...form, doi: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-          </div>
-          <textarea placeholder="Short abstract (used if you don't write full content below)" rows={2} value={form.abstract} onChange={(e) => setForm({ ...form, abstract: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-          <textarea placeholder="Key Findings" rows={2} value={form.keyFindings} onChange={(e) => setForm({ ...form, keyFindings: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-          <textarea placeholder="Research Gap" rows={2} value={form.researchGap} onChange={(e) => setForm({ ...form, researchGap: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-          <input placeholder="Reference Link" value={form.referenceLink} onChange={(e) => setForm({ ...form, referenceLink: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Full Review (you can add pictures here)</label>
@@ -239,7 +204,6 @@ const LiteratureReview = () => {
             />
           </div>
 
-          <FileUpload label="PDF File (optional)" accept="application/pdf" onFileSelect={setFile} existingUrl={editing?.pdfUrl} />
           <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">{editing ? 'Save Changes' : 'Add Paper'}</button>
         </form>
       </Modal>
