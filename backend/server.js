@@ -10,8 +10,8 @@ connectDB();
 const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
@@ -28,7 +28,7 @@ app.use('/api/equipment', require('./routes/equipmentRoutes'));
 app.use('/api/papers', require('./routes/paperRoutes'));
 app.use('/api/elements', require('./routes/elementRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
-
+app.use('/api/upload', require('./routes/uploadRoutes'));
 app.use(notFound);
 app.use(errorHandler);
 

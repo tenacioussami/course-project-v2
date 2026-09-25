@@ -8,6 +8,7 @@ const literatureSchema = new mongoose.Schema(
     journal: { type: String, default: '' },
     doi: { type: String, default: '' },
     abstract: { type: String, default: '' },
+    content: { type: String, default: '' },
     keyFindings: { type: String, default: '' },
     researchGap: { type: String, default: '' },
     referenceLink: { type: String, default: '' },
