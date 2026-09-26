@@ -8,6 +8,7 @@ const ALLOWED_EMAILS = [
   '221132@iub.edu.bd',
   '2331270@iub.edu.bd',
   '2331694@iub.edu.bd',
+  'shidujaman@iub.edu.bd',
 ];
 
 const generateToken = (id) => {

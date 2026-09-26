@@ -43,7 +43,7 @@ const Home = () => {
   return (
     <div className="space-y-8">
       <section className="rounded-2xl bg-gradient-to-br from-brand-700 to-brand-500 p-10 text-white shadow-lg">
-        <h1 className="text-3xl font-bold">{project?.title || 'Untitled Project'}</h1>
+        <h1 className="text-3xl font-bold">{project?.title ||'CarryBot: Vision-Guided Human-Following and Luggage Assistant Robot.'}</h1>
         <p className="mt-3 max-w-2xl text-brand-50/90">{project?.description || 'Exploring the world of robotics through hands-on projects, intelligent automation, and innovative solutions. Our work focuses on designing and developing robots that combine hardware, software, sensors, and AI to solve real-world problems.'}</p>
         <div className="mt-5 flex items-center gap-3">
           <div className="h-2 w-48 overflow-hidden rounded-full bg-white/30">
