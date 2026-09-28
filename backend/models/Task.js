@@ -14,4 +14,9 @@ const taskSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for the common sorts/filters (list page + dashboard deadlines)
+taskSchema.index({ createdAt: -1 });
+taskSchema.index({ deadline: 1 });
+taskSchema.index({ status: 1 });
+
 module.exports = mongoose.model('Task', taskSchema);

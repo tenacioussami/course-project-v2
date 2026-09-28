@@ -20,6 +20,7 @@ const getDashboard = async (req, res, next) => {
       recentMessages,
       upcomingDeadlines,
       project,
+      totalMessages,
     ] = await Promise.all([
       User.countDocuments(),
       Task.countDocuments(),
@@ -29,9 +30,10 @@ const getDashboard = async (req, res, next) => {
       Literature.countDocuments(),
       Equipment.countDocuments(),
       Paper.countDocuments(),
-      Message.find().populate('sender', 'name').sort({ createdAt: -1 }).limit(5),
-      Task.find({ deadline: { $gte: new Date() } }).sort({ deadline: 1 }).limit(5).populate('assignedTo', 'name'),
-      Project.findOne(),
+      Message.find().populate('sender', 'name').sort({ createdAt: -1 }).limit(5).lean(),
+      Task.find({ deadline: { $gte: new Date() } }).sort({ deadline: 1 }).limit(5).populate('assignedTo', 'name').lean(),
+      Project.findOne().select('progress').lean(),
+      Message.countDocuments(),
     ]);
 
     res.json({
@@ -46,6 +48,7 @@ const getDashboard = async (req, res, next) => {
       projectProgress: project ? project.progress : 0,
       recentMessages,
       upcomingDeadlines,
+      totalMessages,
     });
   } catch (err) {
     next(err);

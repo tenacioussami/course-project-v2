@@ -13,7 +13,7 @@ const crudFactory = (Model, { populate = 'createdBy', searchFields = [] } = {}) 
       if (category) filter.category = category;
       if (status) filter.status = status;
 
-      const items = await Model.find(filter).populate(populate, 'name email').sort({ createdAt: -1 });
+      const items = await Model.find(filter).populate(populate, 'name email').sort({ createdAt: -1 }).lean();
       res.json(items);
     } catch (err) {
       next(err);

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Github, Linkedin, BookOpen, Users, ArrowUpRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Github, Linkedin, BookOpen, Users, ArrowUpRight, ShieldCheck, GraduationCap, UserRound, ChevronDown } from 'lucide-react';
 import api, { errMsg } from '../services/api';
 import { useQuery, setQueryData, invalidate } from '../lib/query';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import FileUpload from '../components/FileUpload';
 import { toast } from '../components/Toast';
-import { PageHeader, EmptyState, Field, Button, Avatar, Badge } from '../components/ui';
+import { PageHeader, EmptyState, Field, Button, Avatar, Badge, tones } from '../components/ui';
 import { CardGridSkeleton } from '../components/Loading';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,7 +17,26 @@ const emptyForm = {
 
 // Picks a sensible primary link for the "Follow" button
 const primaryLink = (m) => m.linkedin || m.github || m.researchGate || null;
-const roleTone = { admin: 'violet', member: 'cyan', Supervisor: 'amber' };
+// Role look + meaning. Order here = order on the page (supervisors first).
+const ROLES = {
+  supervisor: { label: 'Supervisor', tone: 'amber', icon: GraduationCap, hint: 'Guides the project. Same access as a member, plus can see all survey results.' },
+  admin: { label: 'Admin', tone: 'violet', icon: ShieldCheck, hint: 'Full control: can edit/delete anything and change roles.' },
+  member: { label: 'Member', tone: 'cyan', icon: UserRound, hint: 'Can add items and edit only their own work.' },
+};
+const ROLE_KEYS = Object.keys(ROLES);
+const roleOf = (m) => {
+  const r = String(m?.role || 'member').toLowerCase();
+  return ROLES[r] ? r : 'member';
+};
+
+const RoleBadge = ({ role }) => {
+  const { label, tone, icon: Icon } = ROLES[role];
+  return (
+    <Badge tone={tone} className="gap-1">
+      <Icon size={12} /> {label}
+    </Badge>
+  );
+};
 
 const Members = () => {
   const { isAdmin, user, setUser } = useAuth();
@@ -28,12 +47,45 @@ const Members = () => {
   const [avatarFile, setAvatarFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [roleSaving, setRoleSaving] = useState(null);
+
+  // Admin: change someone's role straight from their card
+  const changeRole = async (m, newRole) => {
+    if (newRole === roleOf(m)) return;
+    if (user && m._id === user._id && newRole !== 'admin' &&
+      !window.confirm(`You will lose admin access if you change your own role to ${ROLES[newRole].label}. Continue?`)) return;
+    setRoleSaving(m._id);
+    const prev = m.role;
+    setQueryData('/members', null, (list = []) => list.map((x) => (x._id === m._id ? { ...x, role: newRole } : x)));
+    try {
+      const res = await api.put(`/members/${m._id}`, { role: newRole });
+      setQueryData('/members', null, (list = []) => list.map((x) => (x._id === m._id ? { ...x, ...res.data } : x)));
+      if (user && m._id === user._id) {
+        const merged = { ...user, role: res.data.role };
+        setUser(merged);
+        localStorage.setItem('user', JSON.stringify(merged));
+      }
+      toast(`${m.name} is now ${ROLES[newRole].label}`);
+    } catch (err) {
+      setQueryData('/members', null, (list = []) => list.map((x) => (x._id === m._id ? { ...x, role: prev } : x)));
+      toast.error(errMsg(err, 'Could not change role'));
+    } finally {
+      setRoleSaving(null);
+    }
+  };
+
+  const all = Array.isArray(members) ? members : [];
+  const counts = ROLE_KEYS.reduce((acc, r) => ({ ...acc, [r]: all.filter((m) => roleOf(m) === r).length }), {});
+  const visible = all
+    .filter((m) => roleFilter === 'all' || roleOf(m) === roleFilter)
+    .sort((a, b) => ROLE_KEYS.indexOf(roleOf(a)) - ROLE_KEYS.indexOf(roleOf(b)));
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setAvatarFile(null); setModalOpen(true); };
   const openEdit = (m) => {
     setEditing(m);
     setForm({
-      name: m.name, email: m.email, password: '', role: m.role,
+      name: m.name, email: m.email, password: '', role: roleOf(m),
       studentId: m.studentId || '', department: m.department || '',
       skills: (m.skills || []).join(', '), bio: m.bio || '',
       github: m.github || '', linkedin: m.linkedin || '', researchGate: m.researchGate || '',
@@ -101,13 +153,23 @@ const Members = () => {
         )}
       </PageHeader>
 
+      {!loading && all.length > 0 && (
+        <div className="mb-6 flex w-fit flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+          {[['all', 'All', all.length], ...ROLE_KEYS.map((r) => [r, `${ROLES[r].label}s`, counts[r]])].map(([key, label, n]) => (
+            <button key={key} onClick={() => setRoleFilter(key)} className={`tab ${roleFilter === key ? 'tab-active' : ''}`}>
+              {label} <span className="ml-1 font-mono text-xs text-slate-500">{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <CardGridSkeleton tall />
-      ) : members.length === 0 ? (
-        <EmptyState icon={Users} title="No members yet" />
+      ) : visible.length === 0 ? (
+        <EmptyState icon={Users} title={roleFilter === 'all' ? 'No members yet' : `No ${ROLES[roleFilter].label.toLowerCase()}s yet`} />
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {members.map((m) => {
+          {visible.map((m) => {
             const link = primaryLink(m);
             const canEdit = isAdmin || (user && m._id === user._id);
             return (
@@ -128,7 +190,22 @@ const Members = () => {
 
                 <h3 className="text-lg font-bold">{m.name}</h3>
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                  <Badge tone={roleTone[m.role] || 'slate'} className="capitalize">{m.role}</Badge>
+                  {isAdmin ? (
+                    <label className="relative inline-flex items-center" title="Change role">
+                      <span className="sr-only">Role for {m.name}</span>
+                      <select
+                        value={roleOf(m)}
+                        disabled={roleSaving === m._id}
+                        onChange={(e) => changeRole(m, e.target.value)}
+                        className={`badge cursor-pointer appearance-none pr-6 outline-none transition hover:brightness-125 disabled:opacity-60 ${tones[ROLES[roleOf(m)].tone]}`}
+                      >
+                        {ROLE_KEYS.map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-2 opacity-70" />
+                    </label>
+                  ) : (
+                    <RoleBadge role={roleOf(m)} />
+                  )}
                   {m.studentId && <span className="font-mono text-xs text-slate-500">ID {m.studentId}</span>}
                 </div>
                 {m.department && <p className="mt-1.5 text-xs text-slate-500">{m.department}</p>}
@@ -187,10 +264,9 @@ const Members = () => {
           {isAdmin && (
             <Field label="Role">
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="input">
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-                <option value="Supervisor">Supervisor</option>
+                {ROLE_KEYS.map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
               </select>
+              <p className="mt-1.5 text-xs text-slate-500">{ROLES[form.role]?.hint}</p>
             </Field>
           )}
 

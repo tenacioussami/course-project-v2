@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 // Singleton-style document holding project overview + about info
 const projectSchema = new mongoose.Schema(
   {
-    title: { type: String, default: 'Untitled Project' },
+    title: { type: String, default: 'CarryBot: Vision-Guided Human-Following and Luggage Assistant Robot' },
     problemStatement: { type: String, default: '' },
     objectives: { type: String, default: '' },
     proposedSolution: { type: String, default: '' },

@@ -12,7 +12,7 @@ const getOrCreateProject = async () => {
 
 const getProject = async (req, res, next) => {
   try {
-    const project = await getOrCreateProject();
+    const project = (await Project.findOne().lean()) || (await getOrCreateProject());
     res.json(project);
   } catch (err) {
     next(err);

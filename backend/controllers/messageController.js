@@ -2,7 +2,9 @@ const Message = require('../models/Message');
 
 const getMessages = async (req, res, next) => {
   try {
-    const messages = await Message.find().populate('sender', 'name profileImage').sort({ createdAt: 1 });
+    // Only the latest 200 messages — keeps the chat fast as history grows.
+    const latest = await Message.find().populate('sender', 'name profileImage').sort({ createdAt: -1 }).limit(200).lean();
+    const messages = latest.reverse();
     res.json(messages);
   } catch (err) {
     next(err);

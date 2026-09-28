@@ -145,3 +145,14 @@ All list/detail/create/update routes require a valid JWT except `GET /api/projec
 - Add more roles by extending the `role` enum in `models/User.js` and updating `authorize()` checks.
 - Add real-time chat via Socket.IO by wrapping `server.js` with an HTTP server and broadcasting on new `Message` creation (the polling-based `Messages.jsx` page is a placeholder for that upgrade).
 - Add pagination to list endpoints (`Task.find().skip().limit()`) if content volume grows.
+
+## UI & Speed Upgrade (CarryBot redesign)
+
+- **New look**: navy "robotics" theme with orange call-to-action buttons (hero based on the CarryBot reference image in `frontend/public/hero-carrybot.webp`), Space Grotesk (headings) + Plus Jakarta Sans (body) + JetBrains Mono (labels), cyan→violet accents, animated CarryBot schematic on Home and Login.
+- **Project Overview** now renders the full CarryBot proposal (problem, objectives, solution, methodology, outcomes, tech configs, 10-week timeline). The text lives in `frontend/src/data/carrybot.js` and shows instantly; anything edited on the site overrides it.
+- **Instant clicks**: `src/lib/query.js` caches every GET (memory + localStorage) and refreshes in the background; nav links prefetch data on hover; every page's code is preloaded while idle; edits/deletes/status changes/chat messages update the screen immediately (optimistic UI).
+- **Render cold-start**: the site pings `/api/health` on open so the backend wakes up early.
+- **Backend**: gzip `compression`, `.lean()` read queries, indexes on tasks/messages, chat limited to the latest 200 messages.
+- The Quill editor is now loaded only when the Literature editor opens (≈200 KB less on first load).
+
+After pulling: run `npm install` in both `backend/` and `frontend/` (backend has one new dependency: `compression`).

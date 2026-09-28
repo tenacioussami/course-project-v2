@@ -3,7 +3,7 @@ const SurveyResponse = require('../models/SurveyResponse');
 
 const getSurveys = async (req, res, next) => {
   try {
-    const surveys = await Survey.find().populate('createdBy', 'name').sort({ createdAt: -1 });
+    const surveys = await Survey.find().populate('createdBy', 'name').sort({ createdAt: -1 }).lean();
     res.json(surveys);
   } catch (err) {
     next(err);

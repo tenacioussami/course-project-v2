@@ -12,7 +12,7 @@ const getTasks = async (req, res, next) => {
     let query = Task.find(filter).populate('assignedTo', 'name email').populate('createdBy', 'name email');
     query = sort === 'deadline' ? query.sort({ deadline: 1 }) : query.sort({ createdAt: -1 });
 
-    const tasks = await query;
+    const tasks = await query.lean();
     res.json(tasks);
   } catch (err) {
     next(err);
