@@ -9,4 +9,17 @@ export default defineConfig({
       '/api': 'http://localhost:5000',
     },
   },
+  build: {
+    target: 'es2020',
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        // Long-lived, cacheable vendor chunks; pages are split per route.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          net: ['axios'],
+        },
+      },
+    },
+  },
 });

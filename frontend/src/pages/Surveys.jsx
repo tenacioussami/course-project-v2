@@ -1,31 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Plus, Trash2, BarChart3, X } from 'lucide-react';
-import api from '../services/api';
-import Loading from '../components/Loading';
+import { useState } from 'react';
+import { Plus, Trash2, BarChart3, X, ClipboardList, Star } from 'lucide-react';
+import api, { errMsg } from '../services/api';
+import { useQuery, setQueryData, invalidate } from '../lib/query';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { toast } from '../components/Toast';
+import { PageHeader, EmptyState, Field, Button } from '../components/ui';
+import { CardGridSkeleton, Skeleton } from '../components/Loading';
 import { useAuth } from '../context/AuthContext';
 
-const emptyQuestion = () => ({ tempId: crypto.randomUUID(), questionText: '', type: 'short_answer', options: [''] });
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+const emptyQuestion = () => ({ tempId: uid(), questionText: '', type: 'short_answer', options: [''] });
+const typeLabel = { short_answer: 'Short answer', yes_no: 'Yes / No', rating: 'Rating 1–5', multiple_choice: 'Multiple choice' };
 
 const Surveys = () => {
   const { isAdmin, user } = useAuth();
-  const [surveys, setSurveys] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: surveys, loading, refreshing } = useQuery('/surveys');
   const [createOpen, setCreateOpen] = useState(false);
   const [takeSurvey, setTakeSurvey] = useState(null);
   const [answers, setAnswers] = useState({});
-  const [resultsSurvey, setResultsSurvey] = useState(null);
+  const [resultsFor, setResultsFor] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', questions: [emptyQuestion()] });
 
-  const load = async () => {
-    setLoading(true);
-    const res = await api.get('/surveys');
-    setSurveys(res.data);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
+  // Results load through the cache too, so reopening is instant
+  const { data: results } = useQuery(resultsFor ? `/surveys/${resultsFor._id}/results` : '/surveys/_none', null, { enabled: !!resultsFor });
 
   const addQuestion = () => setForm({ ...form, questions: [...form.questions, emptyQuestion()] });
   const removeQuestion = (id) => setForm({ ...form, questions: form.questions.filter((q) => q.tempId !== id) });
@@ -36,140 +36,173 @@ const Surveys = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    await api.post('/surveys', {
-      title: form.title,
-      description: form.description,
-      questions: form.questions.map(({ tempId, ...q }) => q),
-    });
-    setForm({ title: '', description: '', questions: [emptyQuestion()] });
-    setCreateOpen(false);
-    load();
+    setSaving(true);
+    try {
+      await api.post('/surveys', {
+        title: form.title,
+        description: form.description,
+        questions: form.questions.map(({ tempId, ...q }) => ({ ...q, options: q.options.filter(Boolean) })),
+      });
+      setForm({ title: '', description: '', questions: [emptyQuestion()] });
+      setCreateOpen(false);
+      toast('Survey published');
+      invalidate('/surveys');
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not create survey'));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const openTake = (survey) => {
-    setTakeSurvey(survey);
-    setAnswers({});
-  };
+  const openTake = (survey) => { setTakeSurvey(survey); setAnswers({}); };
 
   const submitResponse = async (e) => {
     e.preventDefault();
-    const payload = {
-      answers: Object.entries(answers).map(([questionId, answer]) => ({ questionId, answer })),
-    };
-    await api.post(`/surveys/${takeSurvey._id}/responses`, payload);
-    setTakeSurvey(null);
-  };
-
-  const openResults = async (survey) => {
-    const res = await api.get(`/surveys/${survey._id}/results`);
-    setResultsSurvey(res.data);
+    if (takeSurvey.questions.some((q) => answers[q._id] === undefined || answers[q._id] === '')) {
+      toast.error('Please answer every question');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = { answers: Object.entries(answers).map(([questionId, answer]) => ({ questionId, answer })) };
+      await api.post(`/surveys/${takeSurvey._id}/responses`, payload);
+      invalidate(`/surveys/${takeSurvey._id}/results`);
+      setTakeSurvey(null);
+      toast('Thanks — response submitted');
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not submit'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    await api.delete(`/surveys/${deleteId}`);
+    const id = deleteId;
     setDeleteId(null);
-    load();
+    setQueryData('/surveys', null, (list = []) => list.filter((s) => s._id !== id));
+    try {
+      await api.delete(`/surveys/${id}`);
+      toast('Survey deleted');
+    } catch (err) {
+      toast.error(errMsg(err, 'Delete failed'));
+      invalidate('/surveys');
+    }
   };
-
-  if (loading) return <Loading />;
 
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Surveys</h1>
+      <PageHeader eyebrow="Feedback" title="Surveys" subtitle="Collect quick input from the team and testers." refreshing={refreshing && !loading}>
         {isAdmin && (
-          <button onClick={() => setCreateOpen(true)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
-            <Plus size={16} /> New Survey
-          </button>
+          <button onClick={() => setCreateOpen(true)} className="btn-primary"><Plus size={16} /> New survey</button>
         )}
-      </div>
+      </PageHeader>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {surveys.map((s) => (
-          <div key={s._id} className="rounded-xl border bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800">{s.title}</h3>
-            <p className="mt-1 text-sm text-gray-500">{s.description}</p>
-            <p className="mt-2 text-xs text-gray-400">{s.questions.length} question(s) · by {s.createdBy?.name}</p>
-            <div className="mt-4 flex gap-2">
-              {user && <button onClick={() => openTake(s)} className="rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100">Take Survey</button>}
-              <button onClick={() => openResults(s)} className="flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200">
-                <BarChart3 size={12} /> Results
-              </button>
-              {isAdmin && <button onClick={() => setDeleteId(s._id)} className="ml-auto text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
+      {loading ? (
+        <CardGridSkeleton count={3} />
+      ) : surveys.length === 0 ? (
+        <EmptyState icon={ClipboardList} title="No surveys yet" hint={isAdmin ? 'Create one to start collecting responses.' : 'Check back later.'} />
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {surveys.map((s) => (
+            <div key={s._id} className="card card-hover flex flex-col p-6">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/15 to-violet-500/15 text-cyan-300 ring-1 ring-white/10">
+                  <ClipboardList size={18} />
+                </span>
+                {isAdmin && <button onClick={() => setDeleteId(s._id)} className="icon-btn-danger" aria-label="Delete"><Trash2 size={15} /></button>}
+              </div>
+              <h3 className="text-lg font-semibold">{s.title}</h3>
+              {s.description && <p className="mt-1 line-clamp-2 text-sm text-slate-400">{s.description}</p>}
+              <p className="mt-3 font-mono text-xs text-slate-500">{s.questions.length} question{s.questions.length === 1 ? '' : 's'} · by {s.createdBy?.name || '—'}</p>
+              <div className="mt-auto flex gap-2 pt-5">
+                {user && <button onClick={() => openTake(s)} className="btn-primary btn-sm flex-1 py-2">Take survey</button>}
+                <button onClick={() => setResultsFor(s)} className="btn-secondary btn-sm flex-1 py-2"><BarChart3 size={13} /> Results</button>
+              </div>
             </div>
-          </div>
-        ))}
-        {surveys.length === 0 && <p className="text-sm text-gray-400">No surveys yet.</p>}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {/* Create survey modal */}
-      <Modal open={createOpen} title="New Survey" onClose={() => setCreateOpen(false)} wide>
-        <form onSubmit={handleCreate} className="space-y-4">
-          <input required placeholder="Survey title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-          <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full rounded-lg border px-3 py-2" rows={2} />
+      {/* Create survey */}
+      <Modal open={createOpen} title="New survey" onClose={() => setCreateOpen(false)} wide>
+        <form onSubmit={handleCreate} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+          <Field label="Title">
+            <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input" />
+          </Field>
+          <Field label="Description">
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" rows={2} />
+          </Field>
 
           <div className="space-y-3">
             {form.questions.map((q, idx) => (
-              <div key={q.tempId} className="rounded-lg border p-3">
+              <div key={q.tempId} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                 <div className="flex items-center gap-2">
-                  <input required placeholder={`Question ${idx + 1}`} value={q.questionText} onChange={(e) => updateQuestion(q.tempId, { questionText: e.target.value })} className="flex-1 rounded-lg border px-3 py-1.5 text-sm" />
-                  <select value={q.type} onChange={(e) => updateQuestion(q.tempId, { type: e.target.value })} className="rounded-lg border px-2 py-1.5 text-sm">
-                    <option value="short_answer">Short answer</option>
-                    <option value="yes_no">Yes/No</option>
-                    <option value="rating">Rating (1-5)</option>
-                    <option value="multiple_choice">Multiple choice</option>
-                  </select>
+                  <span className="font-mono text-xs text-cyan-300">Q{idx + 1}</span>
+                  <input required placeholder="Question text" value={q.questionText} onChange={(e) => updateQuestion(q.tempId, { questionText: e.target.value })} className="input py-2" />
                   {form.questions.length > 1 && (
-                    <button type="button" onClick={() => removeQuestion(q.tempId)} className="text-gray-400 hover:text-red-500"><X size={16} /></button>
+                    <button type="button" onClick={() => removeQuestion(q.tempId)} className="icon-btn-danger" aria-label="Remove"><X size={15} /></button>
                   )}
                 </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {Object.entries(typeLabel).map(([t, label]) => (
+                    <button type="button" key={t} onClick={() => updateQuestion(q.tempId, { type: t })}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${q.type === t ? 'bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/30' : 'text-slate-400 hover:bg-white/[0.05]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {q.type === 'multiple_choice' && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-3 space-y-2">
                     {q.options.map((opt, oi) => (
                       <input key={oi} placeholder={`Option ${oi + 1}`} value={opt} onChange={(e) => {
                         const options = [...q.options]; options[oi] = e.target.value;
                         updateQuestion(q.tempId, { options });
-                      }} className="w-full rounded-lg border px-3 py-1 text-sm" />
+                      }} className="input py-2" />
                     ))}
-                    <button type="button" onClick={() => updateQuestion(q.tempId, { options: [...q.options, ''] })} className="text-xs font-medium text-brand-600">+ Add option</button>
+                    <button type="button" onClick={() => updateQuestion(q.tempId, { options: [...q.options, ''] })} className="text-xs font-semibold text-cyan-300 hover:underline">+ Add option</button>
                   </div>
                 )}
               </div>
             ))}
           </div>
-          <button type="button" onClick={addQuestion} className="text-sm font-medium text-brand-600">+ Add question</button>
-          <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">Create Survey</button>
+          <button type="button" onClick={addQuestion} className="btn-secondary w-full border-dashed"><Plus size={15} /> Add question</button>
+          <Button loading={saving} className="btn-primary w-full py-3">Publish survey</Button>
         </form>
       </Modal>
 
-      {/* Take survey modal */}
+      {/* Take survey */}
       <Modal open={!!takeSurvey} title={takeSurvey?.title} onClose={() => setTakeSurvey(null)}>
         {takeSurvey && (
-          <form onSubmit={submitResponse} className="space-y-4">
-            {takeSurvey.questions.map((q) => (
+          <form onSubmit={submitResponse} className="space-y-5">
+            {takeSurvey.questions.map((q, i) => (
               <div key={q._id}>
-                <label className="mb-1 block text-sm font-medium text-gray-700">{q.questionText}</label>
+                <label className="mb-2 block text-sm font-semibold text-slate-100"><span className="mr-2 font-mono text-xs text-cyan-300">{i + 1}.</span>{q.questionText}</label>
                 {q.type === 'short_answer' && (
-                  <input required value={answers[q._id] || ''} onChange={(e) => setAnswers({ ...answers, [q._id]: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
+                  <input required value={answers[q._id] || ''} onChange={(e) => setAnswers({ ...answers, [q._id]: e.target.value })} className="input" />
                 )}
                 {q.type === 'yes_no' && (
-                  <select required value={answers[q._id] || ''} onChange={(e) => setAnswers({ ...answers, [q._id]: e.target.value })} className="w-full rounded-lg border px-3 py-2">
-                    <option value="">Select...</option><option value="Yes">Yes</option><option value="No">No</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Yes', 'No'].map((v) => (
+                      <button type="button" key={v} onClick={() => setAnswers({ ...answers, [q._id]: v })}
+                        className={`rounded-xl border py-2.5 text-sm font-semibold transition ${answers[q._id] === v ? 'border-cyan-400/50 bg-cyan-400/10 text-cyan-200' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>{v}</button>
+                    ))}
+                  </div>
                 )}
                 {q.type === 'rating' && (
                   <div className="flex gap-2">
                     {[1, 2, 3, 4, 5].map((n) => (
-                      <button type="button" key={n} onClick={() => setAnswers({ ...answers, [q._id]: n })}
-                        className={`h-9 w-9 rounded-full border text-sm font-medium ${answers[q._id] === n ? 'bg-brand-600 text-white' : 'text-gray-600'}`}>{n}</button>
+                      <button type="button" key={n} onClick={() => setAnswers({ ...answers, [q._id]: n })} aria-label={`${n} stars`}
+                        className={`transition ${answers[q._id] >= n ? 'text-amber-300' : 'text-slate-600 hover:text-slate-400'}`}>
+                        <Star size={28} fill={answers[q._id] >= n ? 'currentColor' : 'none'} />
+                      </button>
                     ))}
                   </div>
                 )}
                 {q.type === 'multiple_choice' && (
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {q.options.map((opt) => (
-                      <label key={opt} className="flex items-center gap-2 text-sm text-gray-600">
-                        <input type="radio" required name={q._id} checked={answers[q._id] === opt} onChange={() => setAnswers({ ...answers, [q._id]: opt })} />
+                      <label key={opt} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition ${answers[q._id] === opt ? 'border-cyan-400/50 bg-cyan-400/10 text-cyan-100' : 'border-white/10 text-slate-300 hover:border-white/20'}`}>
+                        <input type="radio" required name={q._id} checked={answers[q._id] === opt} onChange={() => setAnswers({ ...answers, [q._id]: opt })} className="accent-cyan-400" />
                         {opt}
                       </label>
                     ))}
@@ -177,38 +210,42 @@ const Surveys = () => {
                 )}
               </div>
             ))}
-            <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">Submit Response</button>
+            <Button loading={saving} className="btn-primary w-full py-3">Submit response</Button>
           </form>
         )}
       </Modal>
 
-      {/* Results modal */}
-      <Modal open={!!resultsSurvey} title={`Results: ${resultsSurvey?.survey?.title || ''}`} onClose={() => setResultsSurvey(null)} wide>
-        {resultsSurvey && (
-          <div className="space-y-5">
-            <p className="text-sm text-gray-500">{resultsSurvey.responses.length} response(s)</p>
-            {resultsSurvey.survey.questions.map((q) => {
-              const qAnswers = resultsSurvey.responses.map((r) => r.answers.find((a) => a.questionId === q._id)?.answer).filter((a) => a !== undefined);
+      {/* Results */}
+      <Modal open={!!resultsFor} title={`Results · ${resultsFor?.title || ''}`} onClose={() => setResultsFor(null)} wide>
+        {!results ? (
+          <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+        ) : (
+          <div className="space-y-6">
+            <p className="font-mono text-xs text-slate-400">{results.responses.length} response{results.responses.length === 1 ? '' : 's'}</p>
+            {results.survey.questions.map((q) => {
+              const qAnswers = results.responses.map((r) => r.answers.find((a) => a.questionId === q._id)?.answer).filter((a) => a !== undefined);
               const counts = {};
               qAnswers.forEach((a) => { counts[a] = (counts[a] || 0) + 1; });
               return (
                 <div key={q._id}>
-                  <p className="mb-2 text-sm font-semibold text-gray-700">{q.questionText}</p>
+                  <p className="mb-2.5 text-sm font-semibold text-slate-100">{q.questionText}</p>
                   {q.type === 'short_answer' ? (
-                    <ul className="space-y-1 text-sm text-gray-600">
-                      {qAnswers.map((a, i) => <li key={i} className="rounded bg-gray-50 px-2 py-1">{a}</li>)}
+                    <ul className="space-y-1.5 text-sm text-slate-300">
+                      {qAnswers.map((a, i) => <li key={i} className="rounded-lg bg-white/[0.04] px-3 py-2">{a}</li>)}
+                      {qAnswers.length === 0 && <li className="text-slate-500">No answers yet.</li>}
                     </ul>
                   ) : (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {Object.entries(counts).map(([key, count]) => (
-                        <div key={key} className="flex items-center gap-2 text-sm">
-                          <span className="w-16 text-gray-500">{key}</span>
-                          <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-100">
-                            <div className="h-full bg-brand-500" style={{ width: `${(count / qAnswers.length) * 100}%` }} />
+                        <div key={key} className="flex items-center gap-3 text-sm">
+                          <span className="w-20 truncate text-slate-400">{key}</span>
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
+                            <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${(count / qAnswers.length) * 100}%` }} />
                           </div>
-                          <span className="w-6 text-right text-gray-400">{count}</span>
+                          <span className="w-6 text-right font-mono text-xs text-slate-400">{count}</span>
                         </div>
                       ))}
+                      {qAnswers.length === 0 && <p className="text-sm text-slate-500">No answers yet.</p>}
                     </div>
                   )}
                 </div>

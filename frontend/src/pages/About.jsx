@@ -1,79 +1,89 @@
-import { useEffect, useState } from 'react';
-import { Pencil } from 'lucide-react';
-import api from '../services/api';
-import Loading from '../components/Loading';
+import { useState } from 'react';
+import { Pencil, GraduationCap, Hash, User, Building2, Landmark, Mail } from 'lucide-react';
+import api, { errMsg } from '../services/api';
+import { useQuery, setQueryData } from '../lib/query';
 import Modal from '../components/Modal';
+import { toast } from '../components/Toast';
+import { PageHeader, Field, Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
+import { withDefaults, paragraphs } from '../data/carrybot';
 
 const fields = [
-  ['courseName', 'Course Name'],
-  ['courseCode', 'Course Code'],
-  ['instructor', 'Instructor'],
-  ['department', 'Department'],
-  ['university', 'University'],
-  ['contactInfo', 'Contact Information'],
+  ['courseName', 'Course Name', GraduationCap],
+  ['courseCode', 'Course Code', Hash],
+  ['instructor', 'Instructor', User],
+  ['department', 'Department', Building2],
+  ['university', 'University', Landmark],
+  ['contactInfo', 'Contact Information', Mail],
 ];
 
 const About = () => {
-  const { user, isAdmin } = useAuth();
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { isAdmin } = useAuth();
+  const { data: raw, refreshing } = useQuery('/project');
+  const project = withDefaults(raw);
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({});
-
-  const load = async () => {
-    const res = await api.get('/project');
-    setProject(res.data);
-    setForm(res.data);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
+  const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await api.put('/project', form);
-    setEditOpen(false);
-    load();
+    setSaving(true);
+    try {
+      const payload = Object.fromEntries(fields.map(([k]) => [k, form[k] || '']));
+      const res = await api.put('/project', payload);
+      setQueryData('/project', null, res.data);
+      setEditOpen(false);
+      toast('About info saved');
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not save'));
+    } finally {
+      setSaving(false);
+    }
   };
-
-  if (loading) return <Loading />;
 
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">About This Project</h1>
+      <PageHeader eyebrow="About" title="About this project" refreshing={refreshing}>
         {isAdmin && (
-          <button onClick={() => setEditOpen(true)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
+          <button onClick={() => { setForm(project); setEditOpen(true); }} className="btn-primary">
             <Pencil size={15} /> Edit
           </button>
         )}
-      </div>
+      </PageHeader>
 
-      <div className="rounded-xl border bg-white p-6 shadow-sm">
-        <p className="text-sm text-gray-600">{project.description || 'No description added yet.'}</p>
-        <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {fields.map(([key, label]) => (
-            <div key={key}>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</dt>
-              <dd className="mt-0.5 text-sm text-gray-700">{project[key] || '—'}</dd>
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <div className="card space-y-4 p-7">
+          <h2 className="text-xl font-bold">{project.title}</h2>
+          {paragraphs(project.description).map((p, i) => <p key={i} className="text-slate-400">{p}</p>)}
+          <div className="border-t border-white/[0.06] pt-5">
+            <p className="eyebrow mb-2">Objective</p>
+            <p className="text-slate-300">{project.objectives}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          {fields.map(([key, label, Icon]) => (
+            <div key={key} className="card flex items-center gap-4 p-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-cyan-300">
+                <Icon size={18} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+                <p className="truncate font-medium text-slate-100">{project[key] || '—'}</p>
+              </div>
             </div>
           ))}
-        </dl>
-        <div className="mt-6 border-t pt-4">
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">Project Objectives</h2>
-          <p className="whitespace-pre-wrap text-sm text-gray-600">{project.objectives || 'Not set yet.'}</p>
         </div>
       </div>
 
       <Modal open={editOpen} title="Edit About Information" onClose={() => setEditOpen(false)}>
         <form onSubmit={handleSubmit} className="space-y-4">
           {fields.map(([key, label]) => (
-            <div key={key}>
-              <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
-              <input value={form[key] || ''} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-lg border px-3 py-2" />
-            </div>
+            <Field key={key} label={label}>
+              <input value={form[key] || ''} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="input" />
+            </Field>
           ))}
-          <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">Save Changes</button>
+          <Button loading={saving} className="btn-primary w-full py-3">Save changes</Button>
         </form>
       </Modal>
     </div>

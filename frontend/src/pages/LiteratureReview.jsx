@@ -1,210 +1,190 @@
-import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp } from 'lucide-react';
-import ReactQuill from 'react-quill-new';
-import 'react-quill-new/dist/quill.snow.css';
-import api from '../services/api';
-import Loading from '../components/Loading';
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { Plus, Pencil, Trash2, Search, ChevronDown, BookOpen } from 'lucide-react';
+import api, { errMsg } from '../services/api';
+import { useQuery, useDebounced, setQueryData, invalidate } from '../lib/query';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { toast } from '../components/Toast';
+import { PageHeader, EmptyState, Field, Button, Avatar } from '../components/ui';
+import { ListSkeleton, Skeleton } from '../components/Loading';
 import { useAuth } from '../context/AuthContext';
+
+// The rich-text editor is heavy — load it only when someone opens the editor.
+const RichEditor = lazy(() => import('../components/RichEditor'));
 
 const emptyForm = { paperTitle: '', journal: '', publicationYear: '', content: '' };
 
 const LiteratureReview = () => {
   const { isAdmin, user } = useAuth();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [year, setYear] = useState('');
+  const q = useDebounced(search);
+  const y = useDebounced(year);
+  const params = { search: q, year: y };
+  const { data: items, loading, refreshing } = useQuery('/literature', params);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [search, setSearch] = useState('');
-  const [year, setYear] = useState('');
+  const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
-
   const [activeAuthorId, setActiveAuthorId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    const params = {};
-    if (search) params.search = search;
-    if (year) params.year = year;
-    const res = await api.get('/literature', { params });
-    setItems(res.data);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, [search, year]);
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true); };
   const openEdit = (item) => { setEditing(item); setForm(item); setModalOpen(true); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaving(true);
     const payload = {
       paperTitle: form.paperTitle,
       journal: form.journal,
       publicationYear: form.publicationYear,
       content: form.content,
     };
-    if (editing) await api.put(`/literature/${editing._id}`, payload);
-    else await api.post('/literature', payload);
-    setModalOpen(false);
-    load();
-  };
-
-  const handleDelete = async () => { await api.delete(`/literature/${deleteId}`); setDeleteId(null); load(); };
-
-  const imageHandler = function () {
-    const input = document.createElement('input');
-    input.setAttribute('type', 'file');
-    input.setAttribute('accept', 'image/*');
-    input.click();
-    input.onchange = async () => {
-      const selected = input.files[0];
-      if (!selected) return;
-      const fd = new FormData();
-      fd.append('image', selected);
-      const res = await api.post('/upload/image', fd);
-      const url = res.data.url;
-      const quill = this.quill;
-      const range = quill.getSelection(true);
-      quill.insertEmbed(range.index, 'image', url);
-      quill.setSelection(range.index + 1);
-    };
-  };
-
-  const quillModules = {
-    toolbar: {
-      container: [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        ['clean'],
-      ],
-      handlers: { image: imageHandler },
-    },
-  };
-
-  const authors = [];
-  const grouped = {};
-  items.forEach((lit) => {
-    const author = lit.createdBy;
-    const id = author?._id || 'unknown';
-    if (!grouped[id]) {
-      grouped[id] = { author, papers: [] };
-      authors.push(id);
+    try {
+      if (editing) await api.put(`/literature/${editing._id}`, payload);
+      else await api.post('/literature', payload);
+      setModalOpen(false);
+      toast(editing ? 'Review updated' : 'Paper added');
+      invalidate('/literature');
+      invalidate('/dashboard');
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not save'));
+    } finally {
+      setSaving(false);
     }
-    grouped[id].papers.push(lit);
-  });
+  };
+
+  const handleDelete = async () => {
+    const id = deleteId;
+    setDeleteId(null);
+    setQueryData('/literature', params, (list = []) => list.filter((l) => l._id !== id));
+    try {
+      await api.delete(`/literature/${id}`);
+      toast('Paper deleted');
+    } catch (err) {
+      toast.error(errMsg(err, 'Delete failed'));
+    }
+    invalidate('/literature');
+    invalidate('/dashboard');
+  };
+
+  const { authors, grouped } = useMemo(() => {
+    const a = [];
+    const g = {};
+    (items || []).forEach((lit) => {
+      const author = lit.createdBy;
+      const id = author?._id || 'unknown';
+      if (!g[id]) { g[id] = { author, papers: [] }; a.push(id); }
+      g[id].papers.push(lit);
+    });
+    return { authors: a, grouped: g };
+  }, [items]);
 
   const currentAuthorId = activeAuthorId && grouped[activeAuthorId] ? activeAuthorId : authors[0];
   const currentPapers = currentAuthorId ? grouped[currentAuthorId].papers : [];
-
   const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id));
-
-  if (loading) return <Loading />;
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Literature Review</h1>
+      <PageHeader eyebrow="Research" title="Literature review" subtitle="Papers on human-following robots, obstacle avoidance, smart carts and vision navigation." refreshing={refreshing && !loading}>
         {user && (
-        <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
-          <Plus size={16} /> Add New Paper
-        </button>
+          <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Add paper</button>
         )}
-      </div>
+      </PageHeader>
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2">
-          <Search size={16} className="text-gray-400" />
-          <input placeholder="Search papers..." value={search} onChange={(e) => setSearch(e.target.value)} className="text-sm outline-none" />
+      <div className="mb-5 flex flex-wrap gap-3">
+        <div className="search-box w-full sm:w-80">
+          <Search size={16} className="text-slate-500" />
+          <input placeholder="Search papers…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <input placeholder="Filter by year" value={year} onChange={(e) => setYear(e.target.value)} className="w-32 rounded-lg border px-3 py-2 text-sm" />
+        <input placeholder="Year" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} className="input w-28" />
       </div>
 
       {authors.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-6 flex flex-wrap gap-2">
           {authors.map((id) => {
-            const { author } = grouped[id];
+            const { author, papers } = grouped[id];
             const active = id === currentAuthorId;
             return (
               <button
                 key={id}
                 onClick={() => { setActiveAuthorId(id); setExpandedId(null); }}
-                className={`rounded-lg px-4 py-3 text-base font-semibold transition ${
-                  active ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                className={`flex items-center gap-2.5 rounded-full border py-1.5 pl-1.5 pr-4 text-sm font-semibold transition ${
+                  active ? 'border-cyan-400/40 bg-cyan-400/10 text-white shadow-glow' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20'
                 }`}
               >
+                <Avatar name={author?.name || '?'} size={26} />
                 {author?.name || 'Unknown'}
+                <span className="font-mono text-xs text-slate-500">{papers.length}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      <div className="space-y-3">
-        {currentPapers.map((lit) => {
-          const isOpen = expandedId === lit._id;
-          return (
-            <div key={lit._id} className="overflow-hidden rounded-xl border bg-white shadow-sm">
-              <div className="flex items-center justify-between gap-3 p-5">
-                <button
-                  onClick={() => toggleExpand(lit._id)}
-                  className="flex flex-1 items-center gap-2 text-left text-lg font-semibold text-brand-700 hover:underline"
-                >
-                  {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                  {lit.paperTitle}
-                </button>
-                <div className="flex shrink-0 gap-2">
-                  {user && <button onClick={() => openEdit(lit)} className="text-gray-400 hover:text-brand-600"><Pencil size={16} /></button>}
-                  {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>}
+      {loading ? (
+        <ListSkeleton rows={4} />
+      ) : currentPapers.length === 0 ? (
+        <EmptyState icon={BookOpen} title="No literature yet" hint={search || year ? 'Nothing matches that search.' : 'Add the first paper review.'} />
+      ) : (
+        <div className="space-y-3">
+          {currentPapers.map((lit) => {
+            const isOpen = expandedId === lit._id;
+            return (
+              <div key={lit._id} className={`card overflow-hidden transition ${isOpen ? 'border-cyan-400/25' : ''}`}>
+                <div className="flex items-center gap-3 p-5">
+                  <button onClick={() => toggleExpand(lit._id)} className="flex flex-1 items-center gap-4 text-left">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${isOpen ? 'bg-cyan-400/15 text-cyan-300' : 'bg-white/[0.05] text-slate-400'}`}>
+                      <ChevronDown size={18} className={`transition ${isOpen ? 'rotate-180' : ''}`} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-display text-lg font-semibold leading-snug text-white">{lit.paperTitle}</span>
+                      <span className="mt-0.5 block font-mono text-xs text-slate-500">{[lit.journal, lit.publicationYear].filter(Boolean).join(' · ') || '—'}</span>
+                    </span>
+                  </button>
+                  <div className="flex shrink-0 gap-1">
+                    {user && <button onClick={() => openEdit(lit)} className="icon-btn" aria-label="Edit"><Pencil size={15} /></button>}
+                    {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="icon-btn-danger" aria-label="Delete"><Trash2 size={15} /></button>}
+                  </div>
                 </div>
+
+                {isOpen && (
+                  <div className="animate-fade-up border-t border-white/[0.06] bg-white/[0.015] px-6 py-6 sm:px-8">
+                    {lit.content ? (
+                      <div className="rich" dangerouslySetInnerHTML={{ __html: lit.content }} />
+                    ) : (
+                      <p className="text-slate-500">No review text was added for this paper.</p>
+                    )}
+                  </div>
+                )}
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {isOpen && (
-                <div className="border-t bg-gray-50 px-6 py-5">
-                  <p className="mb-3 text-base text-gray-600">
-                    {lit.journal} {lit.publicationYear ? `· ${lit.publicationYear}` : ''}
-                  </p>
-
-                  {lit.content ? (
-                    <div
-                      className="prose prose-base max-w-none text-gray-800 prose-img:rounded-lg prose-img:shadow"
-                      dangerouslySetInnerHTML={{ __html: lit.content }}
-                    />
-                  ) : (
-                    <p className="text-gray-400">No review text was added for this paper.</p>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {currentPapers.length === 0 && <p className="text-sm text-gray-400">No literature added yet.</p>}
-      </div>
-
-      <Modal open={modalOpen} title={editing ? 'Edit Paper' : 'Add New Paper'} onClose={() => setModalOpen(false)} wide>
-        <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <input required placeholder="Paper title" value={form.paperTitle} onChange={(e) => setForm({ ...form, paperTitle: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Journal/Conference name" value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
-            <input placeholder="Year" type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-base" />
+      <Modal open={modalOpen} title={editing ? 'Edit paper' : 'Add paper'} onClose={() => setModalOpen(false)} wide>
+        <form onSubmit={handleSubmit} className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
+          <Field label="Paper title">
+            <input required value={form.paperTitle} onChange={(e) => setForm({ ...form, paperTitle: e.target.value })} className="input" />
+          </Field>
+          <div className="grid grid-cols-[1fr_120px] gap-3">
+            <Field label="Journal / conference">
+              <input value={form.journal} onChange={(e) => setForm({ ...form, journal: e.target.value })} className="input" />
+            </Field>
+            <Field label="Year">
+              <input type="number" value={form.publicationYear} onChange={(e) => setForm({ ...form, publicationYear: e.target.value })} className="input" />
+            </Field>
           </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Full Review (you can add pictures here)</label>
-            <ReactQuill
-              theme="snow"
-              value={form.content}
-              onChange={(val) => setForm({ ...form, content: val })}
-              modules={quillModules}
-              className="bg-white"
-            />
-          </div>
-
-          <button className="w-full rounded-lg bg-brand-600 py-2 font-medium text-white hover:bg-brand-700">{editing ? 'Save Changes' : 'Add Paper'}</button>
+          <Field label="Full review (you can add pictures)">
+            <Suspense fallback={<Skeleton className="h-52 w-full rounded-xl" />}>
+              {modalOpen && <RichEditor value={form.content} onChange={(val) => setForm((f) => ({ ...f, content: val }))} />}
+            </Suspense>
+          </Field>
+          <Button loading={saving} className="btn-primary w-full py-3">{editing ? 'Save changes' : 'Add paper'}</Button>
         </form>
       </Modal>
 
