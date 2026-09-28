@@ -70,7 +70,7 @@ const getResults = async (req, res, next) => {
   try {
     const survey = await Survey.findById(req.params.id);
     if (!survey) return res.status(404).json({ message: 'Survey not found' });
-    if (!survey.resultsVisibleToMembers && (!req.user || req.user.role !== 'admin')) {
+    if (!survey.resultsVisibleToMembers && (!req.user || !['admin', 'supervisor'].includes(req.user.role)))  {
       return res.status(403).json({ message: 'Results are not visible to members for this survey' });
     }
     const responses = await SurveyResponse.find({ survey: req.params.id }).populate('respondent', 'name');
