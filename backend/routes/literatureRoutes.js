@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { getAll, getOne, create, update, remove } = require('../controllers/literatureController');
 const { protect } = require('../middleware/authMiddleware');
-const { authorize } = require('../middleware/roleMiddleware');
 const { upload } = require('../utils/cloudinary');
 
 // Public: anyone can view
@@ -13,6 +12,7 @@ router.get('/:id', getOne);
 router.use(protect);
 router.post('/', upload.single('pdf'), create);
 router.put('/:id', upload.single('pdf'), update);
-router.delete('/:id', authorize('admin'), remove);
+// Admin: any paper · Member: only papers they added (checked in the controller)
+router.delete('/:id', remove);
 
 module.exports = router;

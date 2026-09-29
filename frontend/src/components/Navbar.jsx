@@ -51,8 +51,8 @@ export const Logo = () => (
       </svg>
     </span>
     <span className="leading-tight">
-      <span className="block font-display text-[17px] font-bold tracking-tight text-white">CourseProjectHub</span>
-      <span className="block text-[11px] font-medium text-slate-400">Computer Science</span>
+      <span className="block font-display text-[17px] font-bold tracking-tight text-white">CarryBot</span>
+      <span className="block text-[11px] font-medium text-slate-400">A smart robot</span>
     </span>
   </Link>
 );
@@ -156,7 +156,7 @@ const Navbar = () => {
           ) : (
             <>
               <Link to="/login" {...preloadProps('/login')} className="btn-ghost font-medium">Login</Link>
-              <Link to="/register" {...preloadProps('/register')} className="btn-primary px-5">Register</Link>
+              
             </>
           )}
         </div>

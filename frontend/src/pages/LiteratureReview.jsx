@@ -85,6 +85,8 @@ const LiteratureReview = () => {
 
   const currentAuthorId = activeAuthorId && grouped[activeAuthorId] ? activeAuthorId : authors[0];
   const currentPapers = currentAuthorId ? grouped[currentAuthorId].papers : [];
+    // Admin can remove any paper; a member can remove the papers they added.
+  const canRemove = (lit) => isAdmin || (user && lit.createdBy?._id === user._id);
   const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id));
 
   return (
@@ -147,7 +149,7 @@ const LiteratureReview = () => {
                   </button>
                   <div className="flex shrink-0 gap-1">
                     {user && <button onClick={() => openEdit(lit)} className="icon-btn" aria-label="Edit"><Pencil size={15} /></button>}
-                    {isAdmin && <button onClick={() => setDeleteId(lit._id)} className="icon-btn-danger" aria-label="Delete"><Trash2 size={15} /></button>}
+                    {canRemove(lit) && <button onClick={() => setDeleteId(lit._id)} className="icon-btn-danger" aria-label="Remove" title="Remove paper"><Trash2 size={15} /></button>}
                   </div>
                 </div>
 
