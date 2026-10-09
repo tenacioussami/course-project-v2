@@ -193,3 +193,128 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ───────────────────────── Scroll animations (Project Overview) ───────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Children appear one after another */
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(20px) scale(0.97);
+  transition: opacity 0.6s ease, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.is-visible .reveal-stagger > * {
+  opacity: 1;
+  transform: none;
+}
+.reveal-stagger > *:nth-child(1) { transition-delay: 0.10s; }
+.reveal-stagger > *:nth-child(2) { transition-delay: 0.18s; }
+.reveal-stagger > *:nth-child(3) { transition-delay: 0.26s; }
+.reveal-stagger > *:nth-child(4) { transition-delay: 0.34s; }
+.reveal-stagger > *:nth-child(5) { transition-delay: 0.42s; }
+.reveal-stagger > *:nth-child(6) { transition-delay: 0.50s; }
+.reveal-stagger > *:nth-child(7) { transition-delay: 0.58s; }
+.reveal-stagger > *:nth-child(8) { transition-delay: 0.66s; }
+.reveal-stagger > *:nth-child(9) { transition-delay: 0.74s; }
+.reveal-stagger > *:nth-child(10) { transition-delay: 0.82s; }
+.reveal-stagger > *:nth-child(11) { transition-delay: 0.90s; }
+.reveal-stagger > *:nth-child(n + 12) { transition-delay: 0.98s; }
+
+/* Section icon pops in */
+.is-visible .section-icon {
+  animation: icon-pop 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+@keyframes icon-pop {
+  0% { opacity: 0; transform: scale(0.3) rotate(-25deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Heading underline grows */
+.section-title::after {
+  content: '';
+  display: block;
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #22d3ee, #8b5cf6, transparent);
+  width: 0;
+  transition: width 1s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s;
+}
+.is-visible .section-title::after {
+  width: 100%;
+}
+
+/* Timeline line draws downward */
+.timeline-line {
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 1.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s;
+}
+.is-visible .timeline-line {
+  transform: scaleY(1);
+}
+
+/* Current week pulses */
+.now-pulse {
+  animation: now-pulse 1.8s ease-out infinite;
+}
+@keyframes now-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(163, 255, 92, 0.5); }
+  100% { box-shadow: 0 0 0 16px rgba(163, 255, 92, 0); }
+}
+
+/* Light sweep across cards on hover */
+.shine {
+  position: relative;
+  overflow: hidden;
+}
+.shine::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.09) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.9s ease;
+}
+.shine:hover::before {
+  transform: translateX(120%);
+}
+
+/* Slowly drifting glow blobs in the header */
+.orb {
+  animation: orb-drift 10s ease-in-out infinite;
+}
+.orb-2 {
+  animation: orb-drift 13s ease-in-out infinite reverse;
+}
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -25px) scale(1.15); }
+}
+
+/* Header title shimmer */
+.title-shimmer {
+  background-size: 200% auto;
+  animation: title-shimmer 6s linear infinite;
+}
+@keyframes title-shimmer {
+  to { background-position: 200% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal-stagger > *, .timeline-line {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .section-title::after { width: 100%; transition: none; }
+}

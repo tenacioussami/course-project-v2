@@ -7,6 +7,7 @@ import { useQuery, setQueryData, invalidate } from '../lib/query';
 import Modal from '../components/Modal';
 import { toast } from '../components/Toast';
 import { Field, Button } from '../components/ui';
+import Reveal from '../components/Reveal';
 import { useAuth } from '../context/AuthContext';
 import { withDefaults, parseTimeline, parseTech, paragraphs, TECH_STACK, DEFAULT_PROJECT } from '../data/carrybot';
 
@@ -42,23 +43,36 @@ const Paras = ({ text, lead = false }) => (
 );
 
 const Section = ({ s, index, children }) => (
-  <section id={s.id} className="scroll-mt-24">
+  <Reveal as="section" id={s.id} className="scroll-mt-24">
     <div className="mb-5 flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/15 to-violet-500/15 text-cyan-300 ring-1 ring-white/10">
+      <span className="section-icon flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400/15 to-violet-500/15 text-cyan-300 ring-1 ring-white/10">
         <s.icon size={19} />
       </span>
       <div>
         <p className="font-mono text-[11px] text-slate-500">{String(index + 1).padStart(2, '0')}</p>
-        <h2 className="text-2xl font-bold">{s.label}</h2>
+        <h2 className="section-title text-2xl font-bold">{s.label}</h2>
       </div>
     </div>
     {children}
-  </section>
+  </Reveal>
 );
 
 const ProgressRing = ({ value }) => {
   const r = 34;
   const c = 2 * Math.PI * r;
+  // Count up from 0 to the real value when the page opens
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    let raf;
+    const start = performance.now();
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / 1400);
+      setShown(Math.round(value * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
   return (
     <div className="relative h-24 w-24">
       <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
@@ -69,10 +83,10 @@ const ProgressRing = ({ value }) => {
         </defs>
         <circle cx="40" cy="40" r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="7" />
         <circle cx="40" cy="40" r={r} fill="none" stroke="url(#pr-g)" strokeWidth="7" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={c - (c * value) / 100} className="transition-[stroke-dashoffset] duration-700" />
+          strokeDasharray={c} strokeDashoffset={c - (c * shown) / 100} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-xl font-bold text-white">{value}%</span>
+        <span className="font-display text-xl font-bold text-white">{shown}%</span>
         <span className="font-mono text-[9px] text-slate-500">DONE</span>
       </div>
     </div>
@@ -142,13 +156,13 @@ const ProjectOverview = () => {
       {/* Header */}
       <div className="relative mb-10 overflow-hidden rounded-3xl border border-white/[0.07] bg-gradient-to-br from-ink-800 via-ink-900 to-ink-950 p-7 sm:p-10">
         <div className="grid-bg pointer-events-none absolute inset-0" />
-        <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 h-72 w-72 rounded-full bg-violet-600/20 blur-3xl" />
+        <div className="orb absolute -right-20 -top-24 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
+        <div className="orb-2 absolute -bottom-24 left-1/3 h-72 w-72 rounded-full bg-violet-600/20 blur-3xl" />
         <div className="relative flex flex-wrap items-center justify-between gap-8">
           <div className="max-w-3xl animate-fade-up">
             <p className="eyebrow mb-3">Project Overview {refreshing && <span className="text-slate-500">· syncing…</span>}</p>
             <h1 className="font-display text-4xl font-bold leading-tight text-white sm:text-5xl">
-              {subtitle ? <span className="gradient-text">{name}</span> : project.title}
+              {subtitle ? <span className="gradient-text title-shimmer">{name}</span> : project.title}
             </h1>
             {subtitle && <p className="mt-3 font-display text-xl text-slate-200 sm:text-2xl">{subtitle}</p>}
             <div className="mt-6 flex flex-wrap gap-2">
@@ -191,9 +205,9 @@ const ProjectOverview = () => {
           </Section>
 
           <Section s={sections[2]} index={2}>
-            <div className="grid gap-4">
+            <div className="reveal-stagger grid gap-4">
               {paragraphs(project.proposedSolution).map((p, i) => (
-                <div key={i} className="card card-hover flex gap-4 p-5 sm:p-6">
+                <div key={i} className="card card-hover shine flex gap-4 p-5 sm:p-6">
                   <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] font-mono text-xs text-cyan-300">{i + 1}</span>
                   <p className="text-slate-300">{p}</p>
                 </div>
@@ -202,7 +216,7 @@ const ProjectOverview = () => {
           </Section>
 
           <Section s={sections[3]} index={3}>
-            <ol className="relative space-y-4 border-l border-dashed border-white/10 pl-8">
+            <ol className="reveal-stagger relative space-y-4 border-l border-dashed border-white/10 pl-8">
               {paragraphs(project.methodology).map((p, i) => (
                 <li key={i} className="relative">
                   <span className="absolute -left-[45px] top-4 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 font-mono text-xs font-bold text-ink-950 shadow-glow">
@@ -215,9 +229,9 @@ const ProjectOverview = () => {
           </Section>
 
           <Section s={sections[4]} index={4}>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="reveal-stagger grid gap-4 sm:grid-cols-2">
               {paragraphs(project.expectedOutcomes).map((p, i) => (
-                <div key={i} className="card p-6">
+                <div key={i} className="card card-hover shine p-6">
                   <Check size={18} className="mb-3 text-lime-300" />
                   <p className="text-slate-300">{p}</p>
                 </div>
@@ -230,7 +244,7 @@ const ProjectOverview = () => {
               <div className="card space-y-4 p-6">
                 {tech.paras.map((p, i) => <p key={i} className="text-slate-300">{p}</p>)}
                 {techIsDefault && (
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="reveal-stagger flex flex-wrap gap-2 pt-1">
                     {TECH_STACK.map((t) => <span key={t} className="chip border-cyan-400/20 text-cyan-100">{t}</span>)}
                   </div>
                 )}
@@ -238,11 +252,11 @@ const ProjectOverview = () => {
               {tech.options.length > 0 && (
                 <>
                   <p className="eyebrow">{tech.options.length} processing configurations under test</p>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="reveal-stagger grid gap-4 md:grid-cols-2">
                     {tech.options.map((o) => {
                       const parts = o.body.includes('+') && o.body.split('+').length > 2 ? o.body.replace(/\.$/, '').split('+').map((x) => x.trim()) : null;
                       return (
-                        <div key={o.n} className="card card-hover relative overflow-hidden p-6">
+                        <div key={o.n} className="card card-hover shine relative overflow-hidden p-6">
                           <span className="absolute right-4 top-3 font-display text-6xl font-bold text-white/[0.04]">{o.n}</span>
                           <p className="font-mono text-xs text-violet-300">OPTION {o.n}</p>
                           <h3 className="mt-1 text-lg font-semibold">{o.name}</h3>
@@ -264,8 +278,8 @@ const ProjectOverview = () => {
 
           <Section s={sections[6]} index={6}>
             {weeks.length ? (
-              <ol className="relative">
-                <span className="absolute bottom-3 left-[19px] top-3 w-px bg-gradient-to-b from-cyan-400/60 via-violet-500/40 to-transparent" />
+              <ol className="reveal-stagger relative">
+                <span className="timeline-line absolute bottom-3 left-[19px] top-3 w-px bg-gradient-to-b from-cyan-400/60 via-violet-500/40 to-transparent" />
                 {weeks.map((w) => {
                   const state = w.week < currentWeek ? 'done' : w.week === currentWeek ? 'now' : 'next';
                   return (
@@ -275,7 +289,7 @@ const ProjectOverview = () => {
                           state === 'done'
                             ? 'bg-gradient-to-br from-cyan-400 to-violet-500 text-ink-950'
                             : state === 'now'
-                              ? 'bg-ink-800 text-lime-300 ring-lime-300/30'
+                              ? 'now-pulse bg-ink-800 text-lime-300 ring-lime-300/30'
                               : 'bg-ink-800 text-slate-400'
                         }`}
                       >
