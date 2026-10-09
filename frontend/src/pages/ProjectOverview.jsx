@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import RobotAssembly from '../components/RobotAssembly';
 import {
   Pencil, AlertTriangle, Target, Lightbulb, Workflow, Trophy, Cpu, CalendarRange, FileText, Check,
 } from 'lucide-react';
@@ -181,6 +182,13 @@ const ProjectOverview = () => {
           </div>
         </div>
       </div>
+
+      {/* Build animation */}
+      <Reveal as="section" className="mb-12">
+        <p className="eyebrow mb-2">How it's built</p>
+        <h2 className="section-title mb-5 font-display text-2xl font-bold text-white sm:text-3xl">What we build CarryBot with</h2>
+        <RobotAssembly />
+      </Reveal>
 
       {/* Mobile section chips */}
       <div className="sticky top-16 z-20 -mx-4 mb-8 overflow-x-auto border-b border-white/[0.06] bg-ink-950/85 px-4 py-2.5 backdrop-blur-xl lg:hidden">

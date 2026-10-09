@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+
+
 import {
   ArrowRight, Radio, ScanEye, Waves, Cog, Users, ListChecks, Wrench, FileText,
   MessageSquare, CalendarClock, BookOpen, Fingerprint, Compass, Route, ChevronRight,
@@ -9,6 +12,7 @@ import { preloadProps } from '../lib/routes';
 import { useAuth } from '../context/AuthContext';
 import { withDefaults, parseTimeline, paragraphs } from '../data/carrybot';
 import HeroScene from '../components/HeroScene';
+import SafeBoundary from '../components/SafeBoundary';
 import { Skeleton } from '../components/Loading';
 
 const features = [
